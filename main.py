@@ -40,23 +40,30 @@ def main():
     sensor = Sensor('/dev/ttyS1')
 
     while True:
-        PM10_samples = []
-        PM25_samples = []
-        # Sampling sensor
-        for i in range(SAMPLES):
-            PM10, PM25 = sensor.read()
-            PM10_samples.append(PM10)
-            PM25_samples.append(PM25)
-            time.sleep(0.1)
+        try:
+            PM10_samples = []
+            PM25_samples = []
+            # Sampling sensor
+            for i in range(SAMPLES):
+                PM10, PM25 = sensor.read()
+                PM10_samples.append(PM10)
+                PM25_samples.append(PM25)
+                time.sleep(0.1)
 
-        logger.info(log_template.format(mean(PM10_samples),
-                                        UNIT,
-                                        SIGMA,
-                                        stddev(PM10_samples),
-                                        mean(PM25_samples),
-                                        UNIT,
-                                        SIGMA,
-                                        stddev(PM25_samples)))
+            logger.info(log_template.format(mean(PM10_samples),
+                                            UNIT,
+                                            SIGMA,
+                                            stddev(PM10_samples),
+                                            mean(PM25_samples),
+                                            UNIT,
+                                            SIGMA,
+                                            stddev(PM25_samples)))
+
+        except KeyboardInterrupt:
+            sys.exit(0)
+        except:
+            print("Exception:", sys.exc_info()[0])
+
         time.sleep(60)
 
 
