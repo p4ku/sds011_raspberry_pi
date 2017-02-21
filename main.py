@@ -1,6 +1,8 @@
+import sys
 import time
 import datetime
 import logging
+import traceback
 from sds011 import SDS011 as Sensor
 
 SAMPLES = 20
@@ -62,7 +64,7 @@ def main():
         except KeyboardInterrupt:
             sys.exit(0)
         except:
-            print("Exception:", sys.exc_info()[0])
+            print(traceback.format_exc())
 
         time.sleep(60)
 

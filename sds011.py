@@ -9,11 +9,18 @@ class SDS011:
     MSG_TAIL = 0xAB
 
     def __init__(self, dev):
-        self.device = serial.Serial(dev,
+        self.dev = dev
+        self.open()
+
+    def open(self):
+        self.device = serial.Serial(self.dev,
                                     baudrate=9600,
                                     stopbits=serial.STOPBITS_ONE,
                                     parity=serial.PARITY_NONE,
                                     timeout=2)
+
+    def close(self):
+        self.device.close()
 
     def read(self):
         # Wait until message header: 0xAA, 0xC0
@@ -34,7 +41,9 @@ class SDS011:
         PM25_L, PM25_H, PM10_L, PM10_H, ID1, ID2, check_sum, tail = data
 
         if check_sum != sum(data[:6]) % 256:
-            raise Exception("Checksum test failed")
+            self.close()
+            self.open()
+            raise Exception("Checksum test failed, restarting connection")
 
         if tail != self.MSG_TAIL:
             raise Exception("Message was not correctly terminated")
