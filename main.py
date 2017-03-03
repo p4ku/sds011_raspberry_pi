@@ -3,24 +3,28 @@ import time
 import json
 import datetime
 import logging
+import subprocess
 import traceback
+import argparse
 import paho.mqtt.client as paho
-from sds011 import SDS011 as Sensor
+from lib.sds011 import SDS011 as Sensor
 
 SAMPLES = 25
+WAKEUP_TIME = 35
+SLEEP_TIME = 9 * 60  # 9min
+
 UNIT = '\xc2\xb5g/m3'  # ug/m3
 SIGMA = '\xcf\x83'     # sigma
 log_template = 'PM10:{:.2f} {} {}: {:.2f}, PM2.5: {:.2f} {} {}: {:.2f}'
 
-MQTT_BROKER = "broker.mqttdashboard.com"
-MQTT_PORT = 1883
-MQTT_USERNAME = ""
-MQTT_PASSWORD = ""
-MQTT_CHANNEL = "/sensor/123/data"
+
+def cacert_location():
+    return subprocess.check_output('curl-config --ca', shell=True).strip()
 
 
-def on_publish(client, userdata, mid):
-    print("mid: " + str(mid))
+def on_connect(client, userdata, flags, rc):
+    print('MQTT connected')
+
 
 logger = logging.getLogger('air_quality')
 hdlr = logging.FileHandler('./air_quality.log')
@@ -49,20 +53,24 @@ def stddev(data):
     return (ss / float(ld))**0.5
 
 
-def main():
+def main(mqtt_broker, mqtt_port, mqtt_username, mqtt_password):
     sensor = Sensor('/dev/ttyS1')
 
+    mqtt_channel = "devices/" + mqtt_username
     client = paho.Client()
-    # client.tls_set("/path/to/ca.crt")
-    client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-    # client.on_publish = on_publish
-    client.connect(MQTT_BROKER, MQTT_PORT)
+    client.username_pw_set(mqtt_username,  mqtt_password)
+    client.tls_set(cacert_location())
+    client.on_connect = on_connect
+    client.connect(mqtt_broker, mqtt_port)
     client.loop_start()
+
+    print('Start measurement')
+    sensor.wake_up()
 
     while True:
         try:
             """
-               Measurement procedure:
+               Measurement steps:
 
                1. Wake up
                2. Wait 35s
@@ -72,9 +80,9 @@ def main():
             PM10_samples = []
             PM25_samples = []
 
-            # Wake up sensor, wait 30s
+            # Wake up sensor, wait 35s
             sensor.wake_up()
-            time.sleep(35)
+            time.sleep(WAKEUP_TIME)
 
             # Sampling sensor
             for i in range(SAMPLES):
@@ -93,26 +101,42 @@ def main():
                                             stddev(PM25_samples)))
 
             data = {
-                # "timestamp": 1485778030,
-                "protocol_version": 1,
                 "data": [
-                    {"type": "pm2.5", "value": mean(
-                        PM25_samples), "dev": stddev(PM25_samples)},
-                    {"type": "pm10", "value": mean(
-                        PM10_samples), "dev": stddev(PM10_samples)}
+                    {
+                        "kind": "pm25",
+                        "value": round(mean(PM25_samples), 2),
+                        "dev": round(stddev(PM25_samples), 2)
+                    },
+                    {
+                        "kind": "pm10",
+                        "value": round(mean(PM10_samples), 2),
+                        "dev": round(stddev(PM10_samples), 2)
+                    }
                 ]
             }
-            msg_info = client.publish(MQTT_CHANNEL, json.dumps(data), qos=1)
+            payload = json.dumps(data)
+            msg_info = client.publish(mqtt_channel, payload, qos=1)
+            print('Publish to MQTT channel: {}'.format(mqtt_channel))
 
         except KeyboardInterrupt:
+            client.disconnect()
+            client.loop_stop()
             sys.exit(0)
         except:
             print(traceback.format_exc())
 
         # Put sensor into sleep mode
         sensor.sleep()
-        time.sleep(9 * 60)
+        time.sleep(SLEEP_TIME)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mqtt-broker', help='MQTT broker',
+                        default='broker.less-smog.xyz')
+    parser.add_argument('--mqtt-port', help='MQTT port', default=8883)
+    parser.add_argument('--mqtt-username', help='MQTT username', required=True)
+    parser.add_argument('--mqtt-password', help='MQTT password', required=True)
+    args = parser.parse_args()
+    main(args.mqtt_broker, args.mqtt_port,
+         args.mqtt_username, args.mqtt_password)
