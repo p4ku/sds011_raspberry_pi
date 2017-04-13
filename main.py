@@ -56,13 +56,16 @@ def stddev(data):
 def main(mqtt_broker, mqtt_port, mqtt_username, mqtt_password):
     sensor = Sensor('/dev/ttyS1')
 
-    mqtt_channel = "devices/" + mqtt_username
-    client = paho.Client()
-    client.username_pw_set(mqtt_username,  mqtt_password)
-    client.tls_set(cacert_location())
-    client.on_connect = on_connect
-    client.connect(mqtt_broker, mqtt_port)
-    client.loop_start()
+    if mqtt_broker and mqtt_port and mqtt_username and mqtt_password:
+        mqtt_channel = "devices/" + mqtt_username
+        client = paho.Client()
+        client.username_pw_set(mqtt_username,  mqtt_password)
+        client.tls_set(cacert_location())
+        client.on_connect = on_connect
+        client.connect(mqtt_broker, mqtt_port)
+        client.loop_start()
+    else:
+        client = None
 
     print('Start measurement')
     sensor.wake_up()
@@ -101,6 +104,7 @@ def main(mqtt_broker, mqtt_port, mqtt_username, mqtt_password):
                                             stddev(PM25_samples)))
 
             data = {
+                "version": 1,
                 "data": [
                     {
                         "kind": "pm25",
@@ -115,12 +119,14 @@ def main(mqtt_broker, mqtt_port, mqtt_username, mqtt_password):
                 ]
             }
             payload = json.dumps(data)
-            msg_info = client.publish(mqtt_channel, payload, qos=1)
-            print('Publish to MQTT channel: {}'.format(mqtt_channel))
+            if client:
+                msg_info = client.publish(mqtt_channel, payload, qos=1)
+                print('Publish to MQTT channel: {}'.format(mqtt_channel))
 
         except KeyboardInterrupt:
-            client.disconnect()
-            client.loop_stop()
+            if client:
+                client.disconnect()
+                client.loop_stop()
             sys.exit(0)
         except:
             print(traceback.format_exc())
@@ -135,8 +141,8 @@ if __name__ == "__main__":
     parser.add_argument('--mqtt-broker', help='MQTT broker',
                         default='broker.less-smog.xyz')
     parser.add_argument('--mqtt-port', help='MQTT port', default=8883)
-    parser.add_argument('--mqtt-username', help='MQTT username', required=True)
-    parser.add_argument('--mqtt-password', help='MQTT password', required=True)
+    parser.add_argument('--mqtt-username', help='MQTT username', default=None)
+    parser.add_argument('--mqtt-password', help='MQTT password', default=None)
     args = parser.parse_args()
     main(args.mqtt_broker, args.mqtt_port,
          args.mqtt_username, args.mqtt_password)
